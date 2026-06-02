@@ -51,7 +51,8 @@ brent-oil-forecasting/
 ├── src/
 │   ├── __init__.py
 │   ├── utils.py                     # Fonctions utilitaires
-│   └── analysis.py                  # Pipeline d'analyse complet
+│   ├── analysis.py                  # Pipeline d'analyse complet (V1)
+│   └── analysis_v2.py              # Analyse corrigee (V2 - comparaison equitable)
 ├── generate_data.py                 # Generateur de donnees synthetiques
 ├── create_notebook.py               # Script de creation du notebook
 ├── requirements.txt                 # Dependances Python
@@ -132,7 +133,7 @@ brent-oil-forecasting/
 | XGBoost | 2.00 | 4.49 | 9.25% |
 | Random Forest | 1.20 | 4.68 | 5.20% |
 
-**Note** : Les modeles ML utilisent des previsions one-step-ahead avec acces aux prix passes comme features, ce qui n'est pas directement comparable aux previsions multi-step des modeles statistiques.
+**Note** : Les resultats ci-dessus proviennent de l'analyse V1 ou les modeles ML utilisent des previsions one-step-ahead. Voir la section "Analyse Corrigee (V2)" ci-dessous pour une comparaison equitable.
 
 ## Installation et Utilisation
 
@@ -183,19 +184,70 @@ jupyter notebook notebooks/brent_oil_forecasting.ipynb
 - **scipy** : Fonctions scientifiques (Box-Cox)
 - **nbformat** : Creation de notebooks
 
+## Analyse Corrigee (V2)
+
+Le fichier `src/analysis_v2.py` corrige trois problemes critiques identifies dans l'analyse originale :
+
+### Correction 1 : Comparaison equitable (multi-step vs one-step)
+
+**Probleme** : Les modeles ML (XGBoost, Random Forest) utilisaient la prediction one-step-ahead avec les valeurs reelles en lag, tandis que les modeles statistiques (ARIMA, SARIMA) faisaient de la prevision multi-step. Cela rendait la comparaison injuste.
+
+**Solution** : Implementation de la prevision recursive multi-step pour les modeles ML :
+- Le modele predit t+1
+- Cette prediction devient lag pour predire t+2
+- Continue recursivement pour tout l'horizon de test
+
+### Correction 2 : Dominance du lag_1
+
+**Probleme** : La feature lag_1 faisait que les modeles copiaient essentiellement le prix de la veille, cachant s'ils apprenaient de vrais patterns.
+
+**Solution** :
+- Suppression de lag_1 des features
+- Utilisation des lags 7, 14, 30 uniquement
+- Ajout de features log-return : `log(prix_t) - log(prix_t-k)` pour k = 7, 14, 30
+
+### Correction 3 : Choix additif vs multiplicatif
+
+**Probleme** : La decomposition additive etait codee en dur sans justification.
+
+**Solution** : Verification automatique :
+- Division de la serie en 4 segments egaux
+- Calcul de l'ecart-type des residus dans chaque segment
+- Si correlation(niveau, ecart-type) > 0.5 : multiplicatif
+- Sinon : additif
+- Le choix est documente et justifie dans la figure generee
+
+### Execution de l'analyse corrigee
+
+```bash
+python src/analysis_v2.py
+```
+
+### Resultats corrigees (comparaison equitable)
+
+| Modele | MAE | RMSE | MAPE (%) |
+|--------|-----|------|----------|
+| ARIMA(2,1,2) | 20.43 | 28.50 | 55.30 |
+| AutoARIMA | 20.49 | 28.55 | 55.55 |
+| XGBoost (Recursif) | 30.82 | 34.88 | 177.94 |
+| Random Forest (Recursif) | 40.88 | 49.08 | 224.98 |
+| SARIMA(1,1,1)(1,1,0,12) | 59.09 | 70.62 | 195.03 |
+
+**Conclusion** : Avec une comparaison equitable en multi-step, ARIMA surpasse les modeles ML. La superiorite apparente des modeles ML dans V1 etait due a l'utilisation de lag_1 (copie du prix precedent) et de la prediction one-step-ahead.
+
 ## Limites et Perspectives
 
 ### Limites
 - Les donnees synthetiques, bien que realistes, ne capturent pas tous les evenements historiques
 - Les modeles statistiques assument la linearite et la normalite des residus
-- Les modeles ML en one-step-ahead ne sont pas directement comparables aux previsions multi-step
+- En prevision multi-step recursive, les erreurs ML s'accumulent rapidement
 
 ### Perspectives d'amelioration
 - Integration de variables exogenes (production OPEC, PIB mondial, taux de change)
 - Modeles GARCH pour la volatilite conditionnelle
 - Reseaux de neurones recurrents (LSTM, GRU)
 - Modeles hybrides combinant approches statistiques et ML
-- Previsions multi-step pour les modeles ML
+- Techniques de reduction d'erreur pour la prevision recursive (bootstrapping, etc.)
 
 ## Licence
 
