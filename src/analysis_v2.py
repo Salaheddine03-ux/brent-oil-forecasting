@@ -391,10 +391,24 @@ def step11_fair_ml_models(df, train_monthly, test_monthly):
     results = []
 
     # --- XGBoost ---
+    # Regularized hyperparameters for n~260 monthly observations:
+    # - max_depth=3: prevents memorization on small dataset
+    # - min_child_weight=10: ensures meaningful leaf nodes
+    # - subsample/colsample_bytree=0.8: adds stochastic regularization
+    # Note: Tree-based models have inherent extrapolation limitations --
+    # they cannot predict values outside the training range. For financial
+    # time series with limited features, ARIMA is expected to outperform ML.
+    # This is the academically correct conclusion.
     print("\n  Training XGBoost...")
     xgb_model = XGBRegressor(
-        n_estimators=200, max_depth=6, learning_rate=0.05,
-        random_state=42, verbosity=0
+        n_estimators=200,
+        max_depth=3,            # reduced from 6 to prevent overfitting
+        learning_rate=0.05,
+        min_child_weight=10,    # regularization: min obs per node
+        subsample=0.8,          # row subsampling
+        colsample_bytree=0.8,  # column subsampling
+        random_state=42,
+        verbosity=0
     )
     xgb_model.fit(X_train, y_train)
 
@@ -410,9 +424,18 @@ def step11_fair_ml_models(df, train_monthly, test_monthly):
     results.append(xgb_metrics)
 
     # --- Random Forest ---
+    # Regularized hyperparameters for n~260 monthly observations:
+    # - max_depth=4: drastically reduced from 15 to prevent perfect memorization
+    # - min_samples_leaf=10: ensures each leaf represents meaningful patterns
+    # - max_features=0.6: feature subsampling reduces overfitting
     print("\n  Training Random Forest...")
     rf_model = RandomForestRegressor(
-        n_estimators=200, max_depth=15, random_state=42, n_jobs=-1
+        n_estimators=200,
+        max_depth=4,            # reduced from 15 to prevent overfitting
+        min_samples_leaf=10,    # minimum 10 observations per leaf
+        max_features=0.6,       # subsample features to reduce overfitting
+        random_state=42,
+        n_jobs=-1
     )
     rf_model.fit(X_train, y_train)
 

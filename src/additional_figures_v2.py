@@ -78,14 +78,42 @@ def prepare_monthly_ml_data(df):
 
 
 def train_ml_models(X_train, X_test, y_train, y_test):
-    """Train XGBoost and Random Forest on monthly data and return predictions."""
-    xgb_model = XGBRegressor(n_estimators=200, max_depth=6, learning_rate=0.05,
-                              random_state=42, verbosity=0)
+    """
+    Train XGBoost and Random Forest on monthly data and return predictions.
+
+    Hyperparameter rationale (dataset size ~260 monthly observations):
+    - max_depth severely limited to prevent memorization of small dataset
+    - min_samples_leaf / min_child_weight enforce meaningful leaf nodes
+    - Subsampling (max_features, subsample, colsample_bytree) adds regularization
+    - Tree-based models have inherent extrapolation limitations: they cannot
+      predict values outside the training range, which causes systematic
+      underestimation when test prices exceed training prices
+    - For financial time series with limited features, ARIMA is expected to
+      outperform ML models -- this is the academically correct conclusion
+    """
+    # XGBoost - regularized for n~260 monthly observations
+    xgb_model = XGBRegressor(
+        n_estimators=200,
+        max_depth=3,            # reduced from 6 to prevent overfitting
+        learning_rate=0.05,
+        min_child_weight=10,    # regularization: min obs per node
+        subsample=0.8,          # row subsampling for regularization
+        colsample_bytree=0.8,  # column subsampling for regularization
+        random_state=42,
+        verbosity=0
+    )
     xgb_model.fit(X_train, y_train)
     xgb_pred = xgb_model.predict(X_test)
 
-    rf_model = RandomForestRegressor(n_estimators=200, max_depth=15,
-                                      random_state=42, n_jobs=-1)
+    # Random Forest - regularized for n~260 monthly observations
+    rf_model = RandomForestRegressor(
+        n_estimators=200,
+        max_depth=4,            # reduced from 15 to prevent overfitting
+        min_samples_leaf=10,    # minimum 10 observations per leaf
+        max_features=0.6,       # subsample features to reduce overfitting
+        random_state=42,
+        n_jobs=-1
+    )
     rf_model.fit(X_train, y_train)
     rf_pred = rf_model.predict(X_test)
 
@@ -251,9 +279,13 @@ def figure4_learning_curves(X_train, y_train):
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
     models = [
-        ('XGBoost V2', XGBRegressor(n_estimators=100, max_depth=6,
-                                     learning_rate=0.05, random_state=42, verbosity=0)),
-        ('Random Forest V2', RandomForestRegressor(n_estimators=100, max_depth=15,
+        ('XGBoost V2', XGBRegressor(n_estimators=100, max_depth=3,
+                                     learning_rate=0.05, min_child_weight=10,
+                                     subsample=0.8, colsample_bytree=0.8,
+                                     random_state=42, verbosity=0)),
+        ('Random Forest V2', RandomForestRegressor(n_estimators=100, max_depth=4,
+                                                    min_samples_leaf=10,
+                                                    max_features=0.6,
                                                     random_state=42, n_jobs=-1)),
     ]
     colors = ['#D32F2F', '#7B1FA2']
@@ -341,13 +373,27 @@ def figure5_error_distribution_fair(df):
     y_test_ml = df_feat_test['Price']
 
     # Train ML models
-    xgb_model = XGBRegressor(n_estimators=200, max_depth=6, learning_rate=0.05,
-                              random_state=42, verbosity=0)
+    xgb_model = XGBRegressor(
+        n_estimators=200,
+        max_depth=3,
+        learning_rate=0.05,
+        min_child_weight=10,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        verbosity=0
+    )
     xgb_model.fit(X_train_ml, y_train_ml)
     xgb_pred = xgb_model.predict(X_test_ml)
 
-    rf_model = RandomForestRegressor(n_estimators=200, max_depth=15,
-                                      random_state=42, n_jobs=-1)
+    rf_model = RandomForestRegressor(
+        n_estimators=200,
+        max_depth=4,
+        min_samples_leaf=10,
+        max_features=0.6,
+        random_state=42,
+        n_jobs=-1
+    )
     rf_model.fit(X_train_ml, y_train_ml)
     rf_pred = rf_model.predict(X_test_ml)
 
