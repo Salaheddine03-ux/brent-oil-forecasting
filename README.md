@@ -274,9 +274,12 @@ La feature lag_1 (prix de la veille) representait >80% de l'importance. Les mode
 #### 3. Overfitting massif
 Avec max_depth=15 sur seulement 260 observations mensuelles, Random Forest memorisait chaque point d'entrainement (score=1.0) sans generaliser (validation oscillant entre -0.4 et 0.7).
 
+#### 4. ARMA(2,2) avec MAE suspecte
+ARMA(2,2) sans differenciation (d=0) suppose que la serie est stationnaire. Sur une serie non-stationnaire comme le Brent, sa prevision multi-step converge rapidement vers la moyenne d'entrainement. Si par coincidence la moyenne de la periode test est proche de la moyenne d'entrainement, ARMA obtient un MAE artificiellement bas -- ce n'est pas une bonne prevision, c'est un artefact.
+
 ### V2 -- Resultats corriges (equitables)
 
-Apres correction de ces trois problemes :
+Apres correction de ces quatre problemes :
 
 | Modele | MAE (USD) | Statut |
 |--------|-----------|--------|

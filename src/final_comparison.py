@@ -1,12 +1,13 @@
 """
 Brent Oil Price Time Series - Final Comparison
 ===============================================
-Generates 5 comprehensive figures telling the full story of the project evolution:
+Generates 6 comprehensive figures telling the full story of the project evolution:
 1. V1 vs V2 comparison table
-2. Visual explanation of the 3 problems found
-3. Final model ranking (fair comparison)
+2. Visual explanation of the 4 problems found
+3. Final model ranking (fair comparison, all statistical models)
 4. Key takeaways (lessons learned)
 5. Project evolution timeline
+6. ARMA anomaly explained (why ARMA(2,2) gets deceptively low MAE)
 
 All figures saved to: figures/step13_final_comparison/
 """
@@ -83,6 +84,42 @@ def compute_all_model_results(train_monthly, test_monthly, monthly):
     except Exception as e:
         print(f"  ARIMA(2,1,2) error: {e}")
         results['ARIMA(2,1,2)'] = 20.43
+
+    # --- AR(2) --- (assumes stationarity - will revert to training mean)
+    try:
+        model = ARIMA(train_monthly, order=(2, 0, 0),
+                      enforce_stationarity=False, enforce_invertibility=False)
+        fitted = model.fit()
+        forecast = fitted.forecast(steps=n_test)
+        forecast = np.clip(forecast.values, 1, None)
+        results['AR(2)'] = mean_absolute_error(test_monthly.values, forecast)
+    except Exception as e:
+        results['AR(2)'] = np.nan
+
+    # --- MA(2) --- (assumes stationarity - will revert to training mean)
+    try:
+        model = ARIMA(train_monthly, order=(0, 0, 2),
+                      enforce_stationarity=False, enforce_invertibility=False)
+        fitted = model.fit()
+        forecast = fitted.forecast(steps=n_test)
+        forecast = np.clip(forecast.values, 1, None)
+        results['MA(2)'] = mean_absolute_error(test_monthly.values, forecast)
+    except Exception as e:
+        results['MA(2)'] = np.nan
+
+    # --- ARMA(2,2) --- (assumes stationarity - reverts to training mean)
+    # NOTE: If ARMA gets low MAE, it's because its mean-reversion forecast
+    # happens to align with the test period average - NOT because it's a
+    # better model. It violates the stationarity assumption.
+    try:
+        model = ARIMA(train_monthly, order=(2, 0, 2),
+                      enforce_stationarity=False, enforce_invertibility=False)
+        fitted = model.fit()
+        forecast = fitted.forecast(steps=n_test)
+        forecast = np.clip(forecast.values, 1, None)
+        results['ARMA(2,2)'] = mean_absolute_error(test_monthly.values, forecast)
+    except Exception as e:
+        results['ARMA(2,2)'] = np.nan
 
     # --- AutoARIMA ---
     try:
@@ -197,6 +234,12 @@ def figure1_v1_vs_v2_comparison():
          'Corrige: seasonal=False,\nd=1'],
         ['SARIMA\n(1,1,1)(1,1,0,12)', 'N/A', 'MAE 28.13',
          'Diverge vers des\nprix negatifs'],
+        ['ARMA(2,2)', 'MAE ~13 (V1)', 'MAE recalcule',
+         'Artefact: revert vers la moyenne\nd\'entrainement sans differenciation'],
+        ['AR(2)', 'N/A', 'MAE recalcule',
+         'Viole hypothese de stationnarite'],
+        ['MA(2)', 'N/A', 'MAE recalcule',
+         'Viole hypothese de stationnarite'],
         ['Moving Average (12)', 'MAPE 42.19%', 'Similaire',
          'Baseline simple'],
         ['Last Value Naive', 'Similaire', 'Similaire',
@@ -226,6 +269,8 @@ def figure1_v1_vs_v2_comparison():
             color = '#C8E6C9'  # Green for best
         elif '28.13' in data[i][2]:
             color = '#FFE0B2'  # Orange for diverging
+        elif 'Viole hypothese' in data[i][3] or 'Artefact' in data[i][3]:
+            color = '#FFE0B2'  # Orange for stationarity violation
         else:
             color = '#F5F5F5'  # Light gray for baselines
         for j in range(len(headers)):
@@ -258,13 +303,13 @@ def figure1_v1_vs_v2_comparison():
 # FIGURE 2: What Went Wrong - 3 Problems Explained
 # ============================================================================
 def figure2_what_went_wrong():
-    """Create a 3-panel figure explaining the 3 problems found."""
-    print("\nGenerating Figure 2: What Went Wrong (3 problems)...")
+    """Create a 4-panel figure explaining the 4 problems found."""
+    print("\nGenerating Figure 2: What Went Wrong (4 problems)...")
 
-    fig, axes = plt.subplots(1, 3, figsize=(20, 8))
+    fig, axes = plt.subplots(2, 2, figsize=(20, 16))
 
     # --- Panel 1: Comparaison deloyale ---
-    ax = axes[0]
+    ax = axes[0, 0]
     ax.set_xlim(0, 10)
     ax.set_ylim(0, 10)
     ax.axis('off')
@@ -314,7 +359,7 @@ def figure2_what_went_wrong():
             ha='center', style='italic', color='#666')
 
     # --- Panel 2: lag_1 dominance ---
-    ax = axes[1]
+    ax = axes[0, 1]
     ax.set_title('Probleme 2:\nlag_1 dominance', fontsize=13,
                  fontweight='bold', color='#D32F2F', pad=15)
 
@@ -346,7 +391,7 @@ def figure2_what_went_wrong():
     ax.grid(True, alpha=0.3, axis='x')
 
     # --- Panel 3: Overfitting ---
-    ax = axes[2]
+    ax = axes[1, 0]
     ax.set_title('Probleme 3:\nOverfitting (n=260 obs)', fontsize=13,
                  fontweight='bold', color='#D32F2F', pad=15)
 
@@ -389,6 +434,41 @@ def figure2_what_went_wrong():
             bbox=dict(boxstyle='round,pad=0.4', facecolor='#FFCDD2',
                       edgecolor='#D32F2F', alpha=0.9))
 
+    # --- Panel 4: Stationarity violation (AR/MA/ARMA) ---
+    ax = axes[1, 1]
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 10)
+    ax.axis('off')
+    ax.set_title('Probleme 4:\nViolation de stationnarite', fontsize=13,
+                 fontweight='bold', color='#D32F2F', pad=15)
+
+    # Main explanation box
+    main_box = FancyBboxPatch((0.3, 5.0), 9.4, 4.5, boxstyle="round,pad=0.15",
+                               facecolor='#FFF3E0', edgecolor='#F57C00', linewidth=2)
+    ax.add_patch(main_box)
+    ax.text(5, 8.8, 'AR(2), MA(2), ARMA(2,2)', fontsize=12, fontweight='bold',
+            ha='center', color='#E65100')
+    ax.text(5, 7.8, 'Ces modeles supposent d=0\n(serie stationnaire)',
+            fontsize=10, ha='center', color='#333')
+    ax.text(5, 6.5, 'Mais le Brent est NON-stationnaire!',
+            fontsize=11, ha='center', color='#D32F2F', fontweight='bold')
+    ax.text(5, 5.5, 'Leur prevision multi-step converge\nvers la moyenne d\'entrainement',
+            fontsize=10, ha='center', color='#333')
+
+    # Result box
+    result_box = FancyBboxPatch((0.5, 0.5), 9.0, 3.8, boxstyle="round,pad=0.15",
+                                 facecolor='#FFEBEE', edgecolor='#D32F2F', linewidth=1.5)
+    ax.add_patch(result_box)
+    ax.text(5, 3.6, 'Consequence:', fontsize=11, fontweight='bold',
+            ha='center', color='#D32F2F')
+    ax.text(5, 2.5, 'Si moyenne(test) ~ moyenne(train):\n'
+            'MAE artificiellement basse par coincidence\n'
+            '(artefact, pas une bonne prevision)',
+            fontsize=10, ha='center', color='#333')
+    ax.text(5, 1.0, 'Modeles AR/MA/ARMA violent l\'hypothese\n'
+            'de stationnarite sur donnees non-stationnaires.',
+            fontsize=9, ha='center', style='italic', color='#666')
+
     plt.tight_layout(pad=3.0)
     plt.savefig(os.path.join(SAVE_DIR, 'what_went_wrong.png'),
                 dpi=150, bbox_inches='tight')
@@ -413,6 +493,8 @@ def figure3_final_ranking(model_results):
     def get_color(name, mae):
         if 'ARIMA(2,1,2)' in name or 'AutoARIMA' in name:
             return '#4CAF50'  # Green - best
+        elif 'AR(2)' == name or 'MA(2)' == name or 'ARMA(2,2)' == name:
+            return '#FF9800'  # Orange - violates stationarity
         elif 'SARIMA' in name:
             return '#FF9800'  # Orange - acceptable but diverges
         elif 'Naive' in name or 'Moving' in name:
@@ -449,15 +531,17 @@ def figure3_final_ranking(model_results):
             label += '  (erreur recursive accumulee)'
         elif 'ARIMA(2,1,2)' in name:
             label += '  MEILLEUR'
+        elif name in ('AR(2)', 'MA(2)', 'ARMA(2,2)'):
+            label += '  (hypothese de stationnarite violee)'
 
         ax.text(width + 0.5, bar.get_y() + bar.get_height() / 2,
                 label, va='center', fontsize=9, fontweight='bold' if 'MEILLEUR' in label else 'normal')
 
     # Legend
     legend_patches = [
-        mpatches.Patch(color='#4CAF50', label='Meilleur (statistique)'),
+        mpatches.Patch(color='#4CAF50', label='Meilleur (statistique avec d=1)'),
         mpatches.Patch(color='#2196F3', label='Baseline (naive)'),
-        mpatches.Patch(color='#FF9800', label='Acceptable (avec reserves)'),
+        mpatches.Patch(color='#FF9800', label='Stationnarite violee / diverge'),
         mpatches.Patch(color='#F44336', label='Faible (ML recursif)'),
     ]
     ax.legend(handles=legend_patches, loc='lower right', fontsize=10,
@@ -693,6 +777,110 @@ def figure5_evolution_timeline():
 
 
 # ============================================================================
+# FIGURE 6: ARMA Anomaly Explained
+# ============================================================================
+def figure6_arma_anomaly_explained(train_monthly, test_monthly):
+    """
+    Explain why ARMA(2,2) can get a deceptively low MAE:
+    - Left panel: training data + ARMA forecast (converges to training mean)
+    - Right panel: text explanation
+    """
+    print("\nGenerating Figure 6: ARMA Anomaly Explained...")
+
+    fig, axes = plt.subplots(1, 2, figsize=(18, 8), gridspec_kw={'width_ratios': [1.3, 1]})
+
+    # Compute ARMA(2,2) forecast
+    n_test = len(test_monthly)
+    try:
+        model = ARIMA(train_monthly, order=(2, 0, 2),
+                      enforce_stationarity=False, enforce_invertibility=False)
+        fitted = model.fit()
+        arma_forecast = fitted.forecast(steps=n_test)
+        arma_forecast = np.clip(arma_forecast.values, 1, None)
+    except Exception:
+        # Fallback: simulate mean reversion
+        train_mean = train_monthly.mean()
+        arma_forecast = np.full(n_test, train_mean)
+
+    train_mean = train_monthly.mean()
+    test_mean = test_monthly.mean()
+
+    # --- Left panel: Plot training data + forecast ---
+    ax = axes[0]
+    ax.plot(train_monthly.index, train_monthly.values, color='#1976D2',
+            linewidth=1.2, label='Train (donnees mensuelles)')
+    ax.plot(test_monthly.index, test_monthly.values, color='#333',
+            linewidth=1.5, label='Test (valeurs reelles)', linestyle='-')
+    ax.plot(test_monthly.index, arma_forecast, color='#D32F2F',
+            linewidth=2.5, label='ARMA(2,2) prevision', linestyle='--')
+
+    # Training mean line
+    ax.axhline(y=train_mean, color='#FF9800', linestyle=':', linewidth=2,
+               label=f'Moyenne entrainement = {train_mean:.1f}$')
+    # Test mean line
+    ax.axhline(y=test_mean, color='#4CAF50', linestyle=':', linewidth=2,
+               label=f'Moyenne test = {test_mean:.1f}$')
+
+    # Vertical line at split
+    split_date = test_monthly.index[0]
+    ax.axvline(x=split_date, color='gray', linestyle='--', alpha=0.7)
+    ax.text(split_date, ax.get_ylim()[1] * 0.95, '  Split', fontsize=9, color='gray')
+
+    ax.set_xlabel('Date', fontsize=11)
+    ax.set_ylabel('Prix (USD/baril)', fontsize=11)
+    ax.set_title('ARMA(2,2) revert vers la moyenne d\'entrainement\n'
+                 '(prevision multi-step sans differenciation)',
+                 fontsize=12, fontweight='bold')
+    ax.legend(fontsize=10, loc='upper left')
+    ax.grid(True, alpha=0.3)
+
+    # --- Right panel: Text explanation ---
+    ax = axes[1]
+    ax.axis('off')
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 10)
+
+    # Title
+    ax.text(5, 9.5, 'Pourquoi ARMA(2,2) obtient un MAE bas?',
+            fontsize=13, fontweight='bold', ha='center', color='#D32F2F')
+
+    # Main explanation box
+    explanation_box = FancyBboxPatch((0.3, 4.0), 9.4, 5.0, boxstyle="round,pad=0.2",
+                                     facecolor='#FFF3E0', edgecolor='#F57C00', linewidth=2)
+    ax.add_patch(explanation_box)
+
+    explanation_text = (
+        f"ARMA(2,2) revert vers la moyenne d'entrainement (~{train_mean:.0f}$).\n"
+        f"Si la moyenne du test est proche, MAE est artificiellement basse.\n"
+        f"Ce n'est PAS une bonne prevision - c'est un artefact statistique.\n\n"
+        f"ARMA(2,2) viole l'hypothese de stationnarite\n"
+        f"(d=0 sur donnees non-stationnaires)."
+    )
+    ax.text(5, 6.5, explanation_text, fontsize=11, ha='center', va='center',
+            color='#333', linespacing=1.5)
+
+    # Values box
+    values_box = FancyBboxPatch((0.5, 0.5), 9.0, 3.0, boxstyle="round,pad=0.15",
+                                 facecolor='#E3F2FD', edgecolor='#1565C0', linewidth=1.5)
+    ax.add_patch(values_box)
+    ax.text(5, 3.0, 'Valeurs calculees:', fontsize=11, fontweight='bold',
+            ha='center', color='#1565C0')
+    ax.text(5, 2.2, f'Moyenne entrainement: {train_mean:.1f}$',
+            fontsize=11, ha='center', color='#FF9800', fontweight='bold')
+    ax.text(5, 1.5, f'Moyenne test: {test_mean:.1f}$',
+            fontsize=11, ha='center', color='#4CAF50', fontweight='bold')
+    diff = abs(train_mean - test_mean)
+    ax.text(5, 0.8, f'Difference: {diff:.1f}$ ({"proche" if diff < 15 else "eloigne"})',
+            fontsize=11, ha='center', color='#333')
+
+    plt.tight_layout(pad=2.0)
+    plt.savefig(os.path.join(SAVE_DIR, 'arma_anomaly_explained.png'),
+                dpi=150, bbox_inches='tight')
+    plt.close()
+    print("  Saved: arma_anomaly_explained.png")
+
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 def main():
@@ -716,13 +904,14 @@ def main():
     for name, mae in sorted(model_results.items(), key=lambda x: x[1]):
         print(f"    {name:35s}: MAE = {mae:.2f}")
 
-    # Generate all 5 figures
+    # Generate all 6 figures
     print("\n" + "-" * 70)
     figure1_v1_vs_v2_comparison()
     figure2_what_went_wrong()
     figure3_final_ranking(model_results)
     figure4_lessons_learned()
     figure5_evolution_timeline()
+    figure6_arma_anomaly_explained(train_monthly, test_monthly)
 
     print("\n" + "=" * 70)
     print(" STEP 13 COMPLETE - All figures saved to:")
@@ -734,6 +923,7 @@ def main():
     print("  3. final_ranking.png")
     print("  4. lessons_learned.png")
     print("  5. evolution_timeline.png")
+    print("  6. arma_anomaly_explained.png")
 
 
 if __name__ == '__main__':
