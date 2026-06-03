@@ -45,14 +45,17 @@ brent-oil-forecasting/
 │   ├── step8_statistical_models/    # Modeles statistiques
 │   ├── step9_evaluation/            # Comparaison des modeles
 │   ├── step10_autoarima/            # AutoARIMA
-│   └── step11_ml_models/            # Modeles Machine Learning
+│   ├── step11_ml_models/            # Modeles Machine Learning
+│   ├── step12_model_analysis/       # Analyse des modeles
+│   └── step13_final_comparison/     # Comparaison finale V1 vs V2
 ├── notebooks/
 │   └── brent_oil_forecasting.ipynb  # Notebook Jupyter complet
 ├── src/
 │   ├── __init__.py
 │   ├── utils.py                     # Fonctions utilitaires
 │   ├── analysis.py                  # Pipeline d'analyse complet (V1)
-│   └── analysis_v2.py              # Analyse corrigee (V2 - comparaison equitable)
+│   ├── analysis_v2.py              # Analyse corrigee (V2 - comparaison equitable)
+│   └── final_comparison.py         # Comparaison finale et figures recapitulatives
 ├── generate_data.py                 # Generateur de donnees synthetiques
 ├── create_notebook.py               # Script de creation du notebook
 ├── requirements.txt                 # Dependances Python
@@ -248,6 +251,54 @@ python src/analysis_v2.py
 - Reseaux de neurones recurrents (LSTM, GRU)
 - Modeles hybrides combinant approches statistiques et ML
 - Techniques de reduction d'erreur pour la prevision recursive (bootstrapping, etc.)
+
+## Resultats et Evolution du Projet
+
+### V1 -- Resultats initiaux (biaises)
+
+Les premiers resultats semblaient montrer une superiorite des modeles ML :
+- Random Forest : MAPE 5.20%
+- XGBoost : MAPE 9.25%
+- ARIMA(2,1,2) : MAPE 61.53%
+
+**Mais ces resultats etaient trompeurs** pour trois raisons :
+
+### Problemes identifies
+
+#### 1. Comparaison deloyale (one-step vs multi-step)
+Les modeles ML utilisaient la prediction one-step-ahead (avec le prix reel de la veille comme input), tandis que les modeles statistiques faisaient du multi-step forecasting sur tout l'horizon de test. C'est comme comparer un etudiant qui a les reponses avec un qui passe l'examen normalement.
+
+#### 2. lag_1 qui ecrase tout
+La feature lag_1 (prix de la veille) representait >80% de l'importance. Les modeles ne faisaient que copier le prix precedent -- ce n'est pas de la prevision, c'est de la persistance.
+
+#### 3. Overfitting massif
+Avec max_depth=15 sur seulement 260 observations mensuelles, Random Forest memorisait chaque point d'entrainement (score=1.0) sans generaliser (validation oscillant entre -0.4 et 0.7).
+
+### V2 -- Resultats corriges (equitables)
+
+Apres correction de ces trois problemes :
+
+| Modele | MAE (USD) | Statut |
+|--------|-----------|--------|
+| ARIMA(2,1,2) | 20.43 | Meilleur |
+| AutoARIMA(2,1,0) | 20.49 | Tres proche |
+| SARIMA(1,1,1)(1,1,0,12) | 28.13 | Diverge |
+| Random Forest (recursif) | ~73 | Erreur accumulee |
+| XGBoost (recursif) | ~75 | Erreur accumulee |
+
+### Conclusion academique
+
+> **Sur une serie financiere univariee avec ~260 observations mensuelles et peu de features exogenes, les modeles statistiques (ARIMA) surpassent significativement les modeles ML en prevision multi-step.**
+
+Les raisons :
+1. Les arbres de decision ne peuvent pas extrapoler au-dela du range observe pendant l'entrainement
+2. L'erreur recursive s'accumule exponentiellement sur un horizon de 85 mois
+3. ARIMA est structurellement concu pour les series temporelles univariees
+4. Avec peu de donnees, la parcimonie des modeles statistiques est un avantage
+
+### Figures detaillees
+
+Voir le dossier `figures/step13_final_comparison/` pour les visualisations completes de cette analyse comparative.
 
 ## Licence
 
