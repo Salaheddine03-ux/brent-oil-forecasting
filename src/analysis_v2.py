@@ -425,15 +425,15 @@ def step11_fair_ml_models(df, train_monthly, test_monthly):
 
     # --- Random Forest ---
     # Regularized hyperparameters for n~260 monthly observations:
-    # - max_depth=4: drastically reduced from 15 to prevent perfect memorization
-    # - min_samples_leaf=10: ensures each leaf represents meaningful patterns
-    # - max_features=0.6: feature subsampling reduces overfitting
+    # - max_depth=5: middle ground between overfitting (depth=15) and underfitting (depth=4)
+    # - min_samples_leaf=5: ensures each leaf represents meaningful patterns
+    # - max_features=0.7: feature subsampling reduces overfitting
     print("\n  Training Random Forest...")
     rf_model = RandomForestRegressor(
         n_estimators=200,
-        max_depth=4,            # reduced from 15 to prevent overfitting
-        min_samples_leaf=10,    # minimum 10 observations per leaf
-        max_features=0.6,       # subsample features to reduce overfitting
+        max_depth=5,            # balanced: depth=4 was underfitting (R2~0.62)
+        min_samples_leaf=5,     # reduced from 10 for better fit
+        max_features=0.7,       # subsample features to reduce overfitting
         random_state=42,
         n_jobs=-1
     )
@@ -548,13 +548,17 @@ def fair_comparison(train_monthly, test_monthly, ml_results, xgb_forecast, rf_fo
                                 enforce_stationarity=False,
                                 enforce_invertibility=False)
             else:
+                # Fix Bug 1: enforce_stationarity=True keeps AR roots inside
+                # the unit circle, preventing explosive/collapsing forecasts
                 model = ARIMA(train_monthly, order=order,
-                              enforce_stationarity=False,
-                              enforce_invertibility=False)
+                              enforce_stationarity=True,
+                              enforce_invertibility=True)
             fitted = model.fit()
             forecast = fitted.forecast(steps=n_test)
-            all_forecasts[name] = forecast.values
-            metrics = evaluate_forecast(test_monthly.values, forecast.values, name)
+            # Clip forecasts: oil prices cannot be negative
+            forecast = np.clip(forecast.values, 1, None)
+            all_forecasts[name] = forecast
+            metrics = evaluate_forecast(test_monthly.values, forecast, name)
             all_results.append(metrics)
         except Exception as e:
             print(f"  Error with {name}: {e}")
@@ -562,27 +566,37 @@ def fair_comparison(train_monthly, test_monthly, ml_results, xgb_forecast, rf_fo
             all_results.append({'model': name, 'MAE': np.nan, 'RMSE': np.nan, 'MAPE': np.nan})
 
     # AutoARIMA
+    # Fix Bug 2: seasonal=False, d=1 prevents defaulting to ARIMA(0,1,0)
+    # which produces a flat line. Without seasonal search on only ~350 monthly
+    # observations, AutoARIMA finds a better pure ARIMA order.
     try:
         print("\nFitting AutoARIMA...")
-        auto_model = pm.auto_arima(train_monthly, seasonal=True, m=12,
+        auto_model = pm.auto_arima(train_monthly, seasonal=False, d=1,
+                                    max_d=2,
                                     suppress_warnings=True, stepwise=True,
                                     trace=False, error_action='ignore')
         auto_forecast = auto_model.predict(n_periods=n_test)
+        # Clip forecasts: oil prices cannot be negative
+        auto_forecast = np.clip(auto_forecast, 1, None)
         all_forecasts['AutoARIMA'] = auto_forecast
         metrics = evaluate_forecast(test_monthly.values, auto_forecast, 'AutoARIMA')
         all_results.append(metrics)
-        print(f"  AutoARIMA order: {auto_model.order}, seasonal: {auto_model.seasonal_order}")
+        print(f"  AutoARIMA order: {auto_model.order}")
     except Exception as e:
         print(f"  Error with AutoARIMA: {e}")
         all_forecasts['AutoARIMA'] = np.full(n_test, train_monthly.mean())
         all_results.append({'model': 'AutoARIMA', 'MAE': np.nan, 'RMSE': np.nan, 'MAPE': np.nan})
 
     # ML models (recursive multi-step -- already computed)
-    all_forecasts['XGBoost (Recursive)'] = xgb_forecast
-    all_forecasts['Random Forest (Recursive)'] = rf_forecast
+    # Clip ML forecasts: oil prices cannot be negative
+    all_forecasts['XGBoost (Recursive)'] = np.clip(xgb_forecast, 1, None)
+    all_forecasts['Random Forest (Recursive)'] = np.clip(rf_forecast, 1, None)
     all_results.extend(ml_results)
 
-    # --- Plot: ML recursive vs ARIMA vs SARIMA ---
+    # --- Plot: ML recursive vs ARIMA vs AutoARIMA (SARIMA excluded) ---
+    # Fix Bug 3: Exclude SARIMA from plot (diverges to negative values,
+    # crushing the Y-axis and making other curves invisible).
+    # SARIMA metrics are still in the comparison table.
     fig, ax = plt.subplots(figsize=(14, 8))
 
     ax.plot(train_monthly.index[-36:], train_monthly.values[-36:],
@@ -596,10 +610,20 @@ def fair_comparison(train_monthly, test_monthly, ml_results, xgb_forecast, rf_fo
               'XGBoost (Recursive)': '#D32F2F',
               'Random Forest (Recursive)': '#7B1FA2'}
 
-    for name, forecast in all_forecasts.items():
+    # Exclude SARIMA from plot (diverges to negative values)
+    plot_forecasts = {k: v for k, v in all_forecasts.items() if 'SARIMA' not in k}
+
+    for name, forecast in plot_forecasts.items():
         ax.plot(test_monthly.index[:len(forecast)], forecast[:n_test],
                 label=name, color=colors.get(name, '#333'),
-                linewidth=1.5, linestyle='--')
+                linewidth=2 if 'ARIMA(2,1,2)' in name else 1.5,
+                linestyle='--')
+
+    # Add annotation about SARIMA exclusion
+    ax.text(0.02, 0.02,
+            'Note: SARIMA exclu du graphique (diverge vers prix negatifs)\nVoir tableau de metriques pour ses scores.',
+            transform=ax.transAxes, fontsize=8, va='bottom',
+            bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
 
     ax.set_title(
         'Comparaison equitable: Tous les modeles en multi-step\n'

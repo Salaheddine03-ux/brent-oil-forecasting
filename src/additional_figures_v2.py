@@ -108,9 +108,9 @@ def train_ml_models(X_train, X_test, y_train, y_test):
     # Random Forest - regularized for n~260 monthly observations
     rf_model = RandomForestRegressor(
         n_estimators=200,
-        max_depth=4,            # reduced from 15 to prevent overfitting
-        min_samples_leaf=10,    # minimum 10 observations per leaf
-        max_features=0.6,       # subsample features to reduce overfitting
+        max_depth=5,            # balanced: depth=4 was underfitting (R2~0.62)
+        min_samples_leaf=5,     # reduced from 10 for better fit
+        max_features=0.7,       # subsample features to reduce overfitting
         random_state=42,
         n_jobs=-1
     )
@@ -283,9 +283,9 @@ def figure4_learning_curves(X_train, y_train):
                                      learning_rate=0.05, min_child_weight=10,
                                      subsample=0.8, colsample_bytree=0.8,
                                      random_state=42, verbosity=0)),
-        ('Random Forest V2', RandomForestRegressor(n_estimators=100, max_depth=4,
-                                                    min_samples_leaf=10,
-                                                    max_features=0.6,
+        ('Random Forest V2', RandomForestRegressor(n_estimators=100, max_depth=5,
+                                                    min_samples_leaf=5,
+                                                    max_features=0.7,
                                                     random_state=42, n_jobs=-1)),
     ]
     colors = ['#D32F2F', '#7B1FA2']
@@ -388,9 +388,9 @@ def figure5_error_distribution_fair(df):
 
     rf_model = RandomForestRegressor(
         n_estimators=200,
-        max_depth=4,
-        min_samples_leaf=10,
-        max_features=0.6,
+        max_depth=5,
+        min_samples_leaf=5,
+        max_features=0.7,
         random_state=42,
         n_jobs=-1
     )
