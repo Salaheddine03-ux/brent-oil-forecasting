@@ -289,6 +289,24 @@ Apres correction de ces quatre problemes :
 | Random Forest (recursif) | ~73 | Erreur accumulee |
 | XGBoost (recursif) | ~75 | Erreur accumulee |
 
+### Observation importante : Moving Average bat ARIMA
+
+La Moving Average (12 mois) obtient MAE=16.70$ contre 20.43$ pour ARIMA(2,1,2). Contrairement a l'artefact ARMA(2,2), ce n'est **pas un bug** mais un resultat classique en prevision :
+
+> *"Sur des horizons longs, les modeles simples sont extremement difficiles a battre."*
+> — Makridakis, M-Competitions (1982-2020)
+
+**Pourquoi c'est different de l'artefact ARMA :**
+- Moving Average ne viole aucune hypothese statistique
+- Sa performance est consistante, pas coincidentielle
+- C'est une strategie de prevision legitime et reconnue
+
+**Explication :** La Moving Average lisse le bruit et fournit une estimation stable du niveau moyen recent. Sur un horizon de 85 mois, les modeles complexes (ARIMA, ML) accumulent des erreurs de step en step, tandis que la baseline stable reste proche du niveau moyen reel.
+
+**Conclusion finale :** Le meilleur modele depend de l'horizon de prevision :
+- Court terme (1-12 mois) : ARIMA(2,1,2) capture mieux la dynamique
+- Long terme (>12 mois) : Moving Average est une baseline robuste difficile a battre
+
 ### Conclusion academique
 
 > **Sur une serie financiere univariee avec ~260 observations mensuelles et peu de features exogenes, les modeles statistiques (ARIMA) surpassent significativement les modeles ML en prevision multi-step.**

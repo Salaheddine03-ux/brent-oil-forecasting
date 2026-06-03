@@ -1,13 +1,14 @@
 """
 Brent Oil Price Time Series - Final Comparison
 ===============================================
-Generates 6 comprehensive figures telling the full story of the project evolution:
+Generates 7 comprehensive figures telling the full story of the project evolution:
 1. V1 vs V2 comparison table
 2. Visual explanation of the 4 problems found
 3. Final model ranking (fair comparison, all statistical models)
 4. Key takeaways (lessons learned)
 5. Project evolution timeline
 6. ARMA anomaly explained (why ARMA(2,2) gets deceptively low MAE)
+7. MA vs ARIMA explained (why Moving Average beats ARIMA on long horizons - M-competitions)
 
 All figures saved to: figures/step13_final_comparison/
 """
@@ -240,8 +241,8 @@ def figure1_v1_vs_v2_comparison():
          'Viole hypothese de stationnarite'],
         ['MA(2)', 'N/A', 'MAE recalcule',
          'Viole hypothese de stationnarite'],
-        ['Moving Average (12)', 'MAPE 42.19%', 'Similaire',
-         'Baseline simple'],
+        ['Moving Average (12)', 'MAPE 42.19%', 'MAE 16.70',
+         'Baseline robuste -\nresultat M-competitions'],
         ['Last Value Naive', 'Similaire', 'Similaire',
          'Baseline'],
     ]
@@ -267,6 +268,8 @@ def figure1_v1_vs_v2_comparison():
             color = '#FFF9C4'  # Yellow for fair but poor
         elif '20.4' in data[i][2]:
             color = '#C8E6C9'  # Green for best
+        elif 'M-competitions' in data[i][3]:
+            color = '#C8E6C9'  # Light green for MA - M-competitions result
         elif '28.13' in data[i][2]:
             color = '#FFE0B2'  # Orange for diverging
         elif 'Viole hypothese' in data[i][3] or 'Artefact' in data[i][3]:
@@ -493,11 +496,13 @@ def figure3_final_ranking(model_results):
     def get_color(name, mae):
         if 'ARIMA(2,1,2)' in name or 'AutoARIMA' in name:
             return '#4CAF50'  # Green - best
+        elif 'Moving' in name:
+            return '#2E7D32'  # Dark green - legitimate best performer (M-competitions)
         elif 'AR(2)' == name or 'MA(2)' == name or 'ARMA(2,2)' == name:
             return '#FF9800'  # Orange - violates stationarity
         elif 'SARIMA' in name:
             return '#FF9800'  # Orange - acceptable but diverges
-        elif 'Naive' in name or 'Moving' in name:
+        elif 'Naive' in name:
             return '#2196F3'  # Blue - baseline
         elif 'XGBoost' in name or 'Random Forest' in name:
             return '#F44336'  # Red - poor
@@ -531,6 +536,8 @@ def figure3_final_ranking(model_results):
             label += '  (erreur recursive accumulee)'
         elif 'ARIMA(2,1,2)' in name:
             label += '  MEILLEUR'
+        elif 'Moving' in name:
+            label += '  (resultat classique M-competitions)'
         elif name in ('AR(2)', 'MA(2)', 'ARMA(2,2)'):
             label += '  (hypothese de stationnarite violee)'
 
@@ -539,7 +546,8 @@ def figure3_final_ranking(model_results):
 
     # Legend
     legend_patches = [
-        mpatches.Patch(color='#4CAF50', label='Meilleur (statistique avec d=1)'),
+        mpatches.Patch(color='#2E7D32', label='Meilleur MAE (M-competitions result)'),
+        mpatches.Patch(color='#4CAF50', label='Meilleur statistique (avec d=1)'),
         mpatches.Patch(color='#2196F3', label='Baseline (naive)'),
         mpatches.Patch(color='#FF9800', label='Stationnarite violee / diverge'),
         mpatches.Patch(color='#F44336', label='Faible (ML recursif)'),
@@ -565,15 +573,15 @@ def figure4_lessons_learned():
     """Create a visually appealing figure with key takeaways."""
     print("\nGenerating Figure 4: Lessons Learned...")
 
-    fig, ax = plt.subplots(figsize=(16, 12))
+    fig, ax = plt.subplots(figsize=(16, 14))
     ax.axis('off')
     ax.set_xlim(0, 10)
-    ax.set_ylim(0, 12)
+    ax.set_ylim(0, 13)
 
     # Title
-    ax.text(5, 11.5, 'Lecons apprises', fontsize=20, fontweight='bold',
+    ax.text(5, 12.5, 'Lecons apprises', fontsize=20, fontweight='bold',
             ha='center', va='center', color='#1565C0')
-    ax.text(5, 11.0, 'Brent Oil Price Forecasting - Enseignements du projet',
+    ax.text(5, 12.0, 'Brent Oil Price Forecasting - Enseignements du projet',
             fontsize=12, ha='center', va='center', color='#666')
 
     lessons = [
@@ -613,10 +621,16 @@ def figure4_lessons_learned():
             'color': '#BF360C',
             'bg': '#FBE9E7'
         },
+        {
+            'icon': '\U0001F3AF',  # target
+            'text': 'Sur des horizons longs, les modeles simples (Moving Average)\nbattent souvent les modeles complexes (M-competitions, Makridakis)',
+            'color': '#2E7D32',
+            'bg': '#E8F5E9'
+        },
     ]
 
-    y_start = 9.8
-    y_step = 1.65
+    y_start = 10.8
+    y_step = 1.5
 
     for i, lesson in enumerate(lessons):
         y = y_start - i * y_step
@@ -881,6 +895,124 @@ def figure6_arma_anomaly_explained(train_monthly, test_monthly):
 
 
 # ============================================================================
+# FIGURE 7: Moving Average vs ARIMA Explained (M-competitions context)
+# ============================================================================
+def figure7_ma_vs_arima_explained(train_monthly, test_monthly):
+    """
+    A 2-panel figure explaining why Moving Average (12) beats ARIMA(2,1,2):
+    - Left panel: Plot with training data, test data, MA forecast, ARIMA forecast
+    - Right panel: Text explanation with M-competitions context
+    """
+    print("\nGenerating Figure 7: MA vs ARIMA Explained...")
+
+    n_test = len(test_monthly)
+
+    # Compute Moving Average (12) forecast
+    ma_value = train_monthly.iloc[-12:].mean()
+    ma_forecast = np.full(n_test, ma_value)
+
+    # Compute ARIMA(2,1,2) forecast
+    try:
+        model = ARIMA(train_monthly, order=(2, 1, 2),
+                      enforce_stationarity=True, enforce_invertibility=True)
+        fitted = model.fit()
+        arima_forecast = fitted.forecast(steps=n_test)
+        arima_forecast = np.clip(arima_forecast.values, 1, None)
+    except Exception:
+        # Fallback
+        arima_forecast = np.full(n_test, train_monthly.iloc[-1])
+
+    # Compute MAEs
+    ma_mae = mean_absolute_error(test_monthly.values, ma_forecast)
+    arima_mae = mean_absolute_error(test_monthly.values, arima_forecast)
+
+    fig, axes = plt.subplots(1, 2, figsize=(20, 9), gridspec_kw={'width_ratios': [1.4, 1]})
+
+    # --- Left panel: Forecast plot ---
+    ax = axes[0]
+
+    # Plot last 48 months of training data
+    train_last_48 = train_monthly.iloc[-48:]
+    ax.plot(train_last_48.index, train_last_48.values, color='#1976D2',
+            linewidth=1.5, label='Entrainement (48 derniers mois)')
+
+    # Plot test data
+    ax.plot(test_monthly.index, test_monthly.values, color='#333',
+            linewidth=1.5, label=f'Test ({n_test} mois)', linestyle='-')
+
+    # Moving Average forecast (horizontal line)
+    ax.plot(test_monthly.index, ma_forecast, color='#2E7D32',
+            linewidth=2.5, label=f'Moving Average (12) - MAE={ma_mae:.2f}$',
+            linestyle='-')
+
+    # ARIMA(2,1,2) forecast
+    ax.plot(test_monthly.index, arima_forecast, color='#D32F2F',
+            linewidth=2.5, label=f'ARIMA(2,1,2) - MAE={arima_mae:.2f}$',
+            linestyle='--')
+
+    # Vertical line at split
+    split_date = test_monthly.index[0]
+    ax.axvline(x=split_date, color='gray', linestyle='--', alpha=0.7, linewidth=1.5)
+    ax.text(split_date, ax.get_ylim()[1] if ax.get_ylim()[1] > 0 else 150,
+            '  Train/Test Split', fontsize=9, color='gray', va='top')
+
+    ax.set_xlabel('Date', fontsize=11)
+    ax.set_ylabel('Prix (USD/baril)', fontsize=11)
+    ax.set_title('Moving Average (12) vs ARIMA(2,1,2)\n'
+                 f'Horizon de prevision : {n_test} mois',
+                 fontsize=13, fontweight='bold')
+    ax.legend(fontsize=10, loc='upper left')
+    ax.grid(True, alpha=0.3)
+
+    # --- Right panel: Text explanation ---
+    ax = axes[1]
+    ax.axis('off')
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 10)
+
+    # Title
+    ax.text(5, 9.5, 'Moving Average (12) vs ARIMA(2,1,2)',
+            fontsize=13, fontweight='bold', ha='center', color='#2E7D32')
+
+    # Main explanation box
+    explanation_box = FancyBboxPatch((0.2, 0.3), 9.6, 8.8, boxstyle="round,pad=0.2",
+                                     facecolor='#E8F5E9', edgecolor='#2E7D32', linewidth=2)
+    ax.add_patch(explanation_box)
+
+    explanation_lines = [
+        ('MA(12) predit une constante = moyenne des', 8.5, 10, '#333', 'normal'),
+        ('12 derniers mois d\'entrainement', 8.0, 10, '#333', 'normal'),
+        ('', 7.6, 10, '#333', 'normal'),
+        ('ARIMA(2,1,2) predit une trajectoire dynamique', 7.2, 10, '#333', 'normal'),
+        ('qui peut diverger', 6.7, 10, '#333', 'normal'),
+        ('', 6.3, 10, '#333', 'normal'),
+        (f'Sur {n_test} mois d\'horizon:', 5.9, 11, '#1565C0', 'bold'),
+        (f'- MA reste stable pres du niveau reel', 5.3, 10, '#2E7D32', 'normal'),
+        (f'  -> MAE = {ma_mae:.2f}$', 4.8, 10, '#2E7D32', 'bold'),
+        (f'- ARIMA accumule des erreurs de step en step', 4.2, 10, '#D32F2F', 'normal'),
+        (f'  -> MAE = {arima_mae:.2f}$', 3.7, 10, '#D32F2F', 'bold'),
+        ('', 3.2, 10, '#333', 'normal'),
+        ('Ce n\'est PAS un artefact.', 2.7, 11, '#2E7D32', 'bold'),
+        ('C\'est un resultat classique documente dans les', 2.2, 10, '#333', 'normal'),
+        ('M-competitions (Makridakis, 1982-2020):', 1.7, 10, '#333', 'normal'),
+        ('les modeles simples sont difficiles a battre', 1.2, 10, '#333', 'italic'),
+        ('sur horizons longs.', 0.7, 10, '#333', 'italic'),
+    ]
+
+    for text, y, size, color, style in explanation_lines:
+        if text:
+            ax.text(5, y, text, fontsize=size, ha='center', va='center',
+                    color=color, fontweight=style if style == 'bold' else 'normal',
+                    fontstyle='italic' if style == 'italic' else 'normal')
+
+    plt.tight_layout(pad=2.0)
+    plt.savefig(os.path.join(SAVE_DIR, 'ma_vs_arima_explained.png'),
+                dpi=150, bbox_inches='tight')
+    plt.close()
+    print("  Saved: ma_vs_arima_explained.png")
+
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 def main():
@@ -904,7 +1036,7 @@ def main():
     for name, mae in sorted(model_results.items(), key=lambda x: x[1]):
         print(f"    {name:35s}: MAE = {mae:.2f}")
 
-    # Generate all 6 figures
+    # Generate all 7 figures
     print("\n" + "-" * 70)
     figure1_v1_vs_v2_comparison()
     figure2_what_went_wrong()
@@ -912,6 +1044,7 @@ def main():
     figure4_lessons_learned()
     figure5_evolution_timeline()
     figure6_arma_anomaly_explained(train_monthly, test_monthly)
+    figure7_ma_vs_arima_explained(train_monthly, test_monthly)
 
     print("\n" + "=" * 70)
     print(" STEP 13 COMPLETE - All figures saved to:")
@@ -924,6 +1057,7 @@ def main():
     print("  4. lessons_learned.png")
     print("  5. evolution_timeline.png")
     print("  6. arma_anomaly_explained.png")
+    print("  7. ma_vs_arima_explained.png")
 
 
 if __name__ == '__main__':
