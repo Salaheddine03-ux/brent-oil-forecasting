@@ -1,14 +1,15 @@
 """
 Brent Oil Price Time Series - Final Comparison
 ===============================================
-Generates 7 comprehensive figures telling the full story of the project evolution:
+Generates 8 comprehensive figures telling the full story of the project evolution:
 1. V1 vs V2 comparison table
 2. Visual explanation of the 4 problems found
-3. Final model ranking (fair comparison, all statistical models)
+3. Final model ranking (VALID models only - excludes AR/MA/ARMA with d=0)
 4. Key takeaways (lessons learned)
 5. Project evolution timeline
 6. ARMA anomaly explained (why ARMA(2,2) gets deceptively low MAE)
 7. MA vs ARIMA explained (why Moving Average beats ARIMA on long horizons - M-competitions)
+8. Final summary table (professional recap with valid ranking + excluded models)
 
 All figures saved to: figures/step13_final_comparison/
 """
@@ -212,43 +213,42 @@ def compute_all_model_results(train_monthly, test_monthly, monthly):
 # FIGURE 1: V1 vs V2 Comparison Table
 # ============================================================================
 def figure1_v1_vs_v2_comparison():
-    """Create a table comparing V1 results vs V2 results."""
+    """Create a table comparing V1 results vs V2 results.
+    AR(2), MA(2), ARMA(2,2) are kept for pedagogical purposes but marked
+    in GRAY with '(EXCLU - invalide)' annotation.
+    """
     print("\nGenerating Figure 1: V1 vs V2 Comparison Table...")
 
-    fig, ax = plt.subplots(figsize=(18, 8))
+    fig, ax = plt.subplots(figsize=(18, 9))
     ax.axis('off')
 
-    # Table data
-    headers = ['Modele', 'V1 Resultat (biaise)', 'V2 Resultat (equitable)', 'Ce qui a change']
+    # Table data - invalid models marked with EXCLU annotation
+    headers = ['Modele', 'V1 Resultat (biaise)', 'V2 Resultat (equitable)', 'Statut']
     data = [
-        ['XGBoost\n(one-step, lag_1)', 'MAPE 9.25%', 'N/A - supprime',
-         'Biaise: lag_1 = copier\nle prix de la veille'],
-        ['Random Forest\n(one-step, lag_1)', 'MAPE 5.20%', 'N/A - supprime',
-         'Biaise: lag_1 = copier\nle prix de la veille'],
-        ['XGBoost\n(recursif, sans lag_1)', 'N/A', 'MAE ~75',
-         'Equitable mais erreur\nrecursive accumulee'],
-        ['Random Forest\n(recursif, sans lag_1)', 'N/A', 'MAE ~73',
-         'Equitable mais erreur\nrecursive accumulee'],
-        ['ARIMA(2,1,2)', 'MAPE 61.53%', 'MAE 20.43',
-         'Meilleur performeur en\ncomparaison equitable'],
-        ['AutoARIMA', 'MAPE 55.55%', 'MAE 20.49',
-         'Corrige: seasonal=False,\nd=1'],
-        ['SARIMA\n(1,1,1)(1,1,0,12)', 'N/A', 'MAE 28.13',
-         'Diverge vers des\nprix negatifs'],
-        ['ARMA(2,2)', 'MAE ~13 (V1)', 'MAE recalcule',
-         'Artefact: revert vers la moyenne\nd\'entrainement sans differenciation'],
-        ['AR(2)', 'N/A', 'MAE recalcule',
-         'Viole hypothese de stationnarite'],
-        ['MA(2)', 'N/A', 'MAE recalcule',
-         'Viole hypothese de stationnarite'],
         ['Moving Average (12)', 'MAPE 42.19%', 'MAE 16.70',
-         'Baseline robuste -\nresultat M-competitions'],
-        ['Last Value Naive', 'Similaire', 'Similaire',
+         'Baseline robuste\n(M-competitions)'],
+        ['ARIMA(2,1,2)', 'MAPE 61.53%', 'MAE 20.43',
+         'Meilleur modele\nstatistique valide'],
+        ['AutoARIMA(2,1,0)', 'MAPE 55.55%', 'MAE 20.49',
+         'Selection automatique'],
+        ['Naive Last Value', 'Similaire', 'MAE ~20.7',
          'Baseline'],
+        ['SARIMA\n(1,1,1)(1,1,0,12)', 'N/A', 'MAE 28.13',
+         'Diverge sur horizon long\n(tableau seulement)'],
+        ['XGBoost\n(recursif, sans lag_1)', 'MAPE 9.25% (biaise)', 'MAE ~75',
+         'Erreur recursive\naccumulee'],
+        ['Random Forest\n(recursif, sans lag_1)', 'MAPE 5.20% (biaise)', 'MAE ~51',
+         'Erreur recursive\naccumulee'],
+        ['AR(2)\n(EXCLU - invalide)', 'N/A', 'MAE recalcule',
+         'EXCLU du classement\nd=0 sur serie non-stationnaire'],
+        ['MA(2)\n(EXCLU - invalide)', 'N/A', 'MAE recalcule',
+         'EXCLU du classement\nd=0 + memoire 2 lags'],
+        ['ARMA(2,2)\n(EXCLU - invalide)', 'MAE ~13 (artefact)', 'MAE recalcule',
+         'EXCLU du classement\nd=0, revert vers moyenne'],
     ]
 
     table = ax.table(cellText=data, colLabels=headers, loc='center',
-                     cellLoc='center', colWidths=[0.2, 0.2, 0.2, 0.28])
+                     cellLoc='center', colWidths=[0.22, 0.2, 0.2, 0.26])
 
     table.auto_set_font_size(False)
     table.set_fontsize(10)
@@ -262,18 +262,17 @@ def figure1_v1_vs_v2_comparison():
     # Color rows based on status
     for i in range(len(data)):
         row_idx = i + 1
-        if 'supprime' in data[i][2]:
-            color = '#FFCDD2'  # Red-ish for biased/removed
-        elif 'N/A' in data[i][1] and 'MAE ~7' in data[i][2]:
-            color = '#FFF9C4'  # Yellow for fair but poor
-        elif '20.4' in data[i][2]:
-            color = '#C8E6C9'  # Green for best
-        elif 'M-competitions' in data[i][3]:
-            color = '#C8E6C9'  # Light green for MA - M-competitions result
+        model_name = data[i][0]
+        if 'EXCLU' in model_name:
+            color = '#E0E0E0'  # GRAY for excluded/invalid models
+        elif '20.43' in data[i][2] or '20.49' in data[i][2]:
+            color = '#C8E6C9'  # Green for best valid models
+        elif '16.70' in data[i][2]:
+            color = '#C8E6C9'  # Green for MA - M-competitions result
         elif '28.13' in data[i][2]:
             color = '#FFE0B2'  # Orange for diverging
-        elif 'Viole hypothese' in data[i][3] or 'Artefact' in data[i][3]:
-            color = '#FFE0B2'  # Orange for stationarity violation
+        elif 'MAE ~7' in data[i][2] or 'MAE ~5' in data[i][2]:
+            color = '#FFCDD2'  # Red for poor ML
         else:
             color = '#F5F5F5'  # Light gray for baselines
         for j in range(len(headers)):
@@ -286,14 +285,21 @@ def figure1_v1_vs_v2_comparison():
 
     # Add legend
     legend_patches = [
-        mpatches.Patch(color='#C8E6C9', label='Meilleur (V2)'),
-        mpatches.Patch(color='#FFE0B2', label='Acceptable'),
-        mpatches.Patch(color='#FFF9C4', label='Equitable mais faible'),
-        mpatches.Patch(color='#FFCDD2', label='Biaise / Supprime'),
+        mpatches.Patch(color='#C8E6C9', label='Meilleur (valide)'),
+        mpatches.Patch(color='#FFE0B2', label='Acceptable (diverge)'),
+        mpatches.Patch(color='#FFCDD2', label='Faible (ML recursif)'),
+        mpatches.Patch(color='#E0E0E0', label='EXCLU (hypotheses violees)'),
         mpatches.Patch(color='#F5F5F5', label='Baseline'),
     ]
     ax.legend(handles=legend_patches, loc='lower center', ncol=5,
               fontsize=10, framealpha=0.9, bbox_to_anchor=(0.5, -0.05))
+
+    # Add note about excluded models
+    ax.text(0.5, -0.02,
+            'Note: AR(2), MA(2), ARMA(2,2) sont conserves pour analyse pedagogique (Step 8) '
+            'mais EXCLUS du classement final (hypothese de stationnarite violee).',
+            transform=ax.transAxes, fontsize=9, ha='center', va='top',
+            style='italic', color='#616161')
 
     plt.tight_layout()
     plt.savefig(os.path.join(SAVE_DIR, 'v1_vs_v2_comparison.png'),
@@ -483,27 +489,35 @@ def figure2_what_went_wrong():
 # FIGURE 3: Final Model Ranking
 # ============================================================================
 def figure3_final_ranking(model_results):
-    """Horizontal bar chart showing all models ranked by MAE."""
-    print("\nGenerating Figure 3: Final Model Ranking...")
+    """Horizontal bar chart showing VALID models only, ranked by MAE.
+    AR(2), MA(2), ARMA(2,2) are EXCLUDED (stationarity assumption violated).
+    """
+    print("\nGenerating Figure 3: Final Model Ranking (valid models only)...")
+
+    # Models to exclude from the ranking chart
+    excluded_models = {'AR(2)', 'MA(2)', 'ARMA(2,2)'}
+
+    # Filter to valid models only
+    valid_results = {k: v for k, v in model_results.items() if k not in excluded_models}
 
     # Sort by MAE (best to worst)
-    sorted_models = sorted(model_results.items(), key=lambda x: x[1])
+    sorted_models = sorted(valid_results.items(), key=lambda x: x[1])
 
     names = [m[0] for m in sorted_models]
     maes = [m[1] for m in sorted_models]
 
     # Color coding
     def get_color(name, mae):
-        if 'ARIMA(2,1,2)' in name or 'AutoARIMA' in name:
-            return '#4CAF50'  # Green - best
-        elif 'Moving' in name:
-            return '#2E7D32'  # Dark green - legitimate best performer (M-competitions)
-        elif 'AR(2)' == name or 'MA(2)' == name or 'ARMA(2,2)' == name:
-            return '#FF9800'  # Orange - violates stationarity
-        elif 'SARIMA' in name:
-            return '#FF9800'  # Orange - acceptable but diverges
-        elif 'Naive' in name:
+        if 'Moving' in name:
+            return '#2E7D32'  # Dark green - M-competitions baseline
+        elif 'ARIMA(2,1,2)' in name:
+            return '#4CAF50'  # Green - best valid statistical model
+        elif 'AutoARIMA' in name:
+            return '#4CAF50'  # Green
+        elif 'Naive Seasonal' in name or 'Naive Last Value' in name:
             return '#2196F3'  # Blue - baseline
+        elif 'SARIMA' in name:
+            return '#FF9800'  # Orange - diverges
         elif 'XGBoost' in name or 'Random Forest' in name:
             return '#F44336'  # Red - poor
         else:
@@ -519,7 +533,7 @@ def figure3_final_ranking(model_results):
     ax.set_yticks(range(len(names)))
     ax.set_yticklabels(names, fontsize=11)
     ax.set_xlabel('MAE (USD)', fontsize=12)
-    ax.set_title('Classement final des modeles (comparaison equitable)\n'
+    ax.set_title('Classement final - Modeles valides uniquement\n'
                  'MAE sur le meme jeu de test mensuel',
                  fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3, axis='x')
@@ -530,26 +544,27 @@ def figure3_final_ranking(model_results):
         label = f' {mae:.1f}'
 
         # Add annotations for specific models
-        if 'SARIMA' in name:
-            label += '  (diverge vers prix negatifs)'
+        if 'Moving' in name:
+            label += '  (M-competitions baseline)'
+        elif 'ARIMA(2,1,2)' in name:
+            label += '  Meilleur modele valide'
+        elif 'AutoARIMA' in name:
+            label += '  (selection automatique)'
+        elif 'SARIMA' in name:
+            label += '  (diverge, tableau seulement)'
         elif 'XGBoost' in name or 'Random Forest' in name:
             label += '  (erreur recursive accumulee)'
-        elif 'ARIMA(2,1,2)' in name:
-            label += '  MEILLEUR'
-        elif 'Moving' in name:
-            label += '  (resultat classique M-competitions)'
-        elif name in ('AR(2)', 'MA(2)', 'ARMA(2,2)'):
-            label += '  (hypothese de stationnarite violee)'
 
         ax.text(width + 0.5, bar.get_y() + bar.get_height() / 2,
-                label, va='center', fontsize=9, fontweight='bold' if 'MEILLEUR' in label else 'normal')
+                label, va='center', fontsize=9,
+                fontweight='bold' if 'Meilleur' in label else 'normal')
 
     # Legend
     legend_patches = [
-        mpatches.Patch(color='#2E7D32', label='Meilleur MAE (M-competitions result)'),
-        mpatches.Patch(color='#4CAF50', label='Meilleur statistique (avec d=1)'),
+        mpatches.Patch(color='#2E7D32', label='Meilleur MAE (M-competitions baseline)'),
+        mpatches.Patch(color='#4CAF50', label='Meilleur modele statistique valide'),
         mpatches.Patch(color='#2196F3', label='Baseline (naive)'),
-        mpatches.Patch(color='#FF9800', label='Stationnarite violee / diverge'),
+        mpatches.Patch(color='#FF9800', label='Diverge sur horizon long'),
         mpatches.Patch(color='#F44336', label='Faible (ML recursif)'),
     ]
     ax.legend(handles=legend_patches, loc='lower right', fontsize=10,
@@ -557,7 +572,16 @@ def figure3_final_ranking(model_results):
 
     # Set x limit to accommodate annotations
     max_mae = max(maes)
-    ax.set_xlim(0, max_mae * 1.4)
+    ax.set_xlim(0, max_mae * 1.45)
+
+    # Add exclusion text box at the bottom
+    exclusion_text = ("Modeles exclus du classement (hypothese de stationnarite violee) : "
+                      "AR(2), MA(2), ARMA(2,2)")
+    ax.text(0.5, -0.08, exclusion_text,
+            transform=ax.transAxes, fontsize=10, ha='center', va='top',
+            style='italic', color='#616161',
+            bbox=dict(boxstyle='round,pad=0.4', facecolor='#F5F5F5',
+                      edgecolor='#BDBDBD', alpha=0.9))
 
     plt.tight_layout()
     plt.savefig(os.path.join(SAVE_DIR, 'final_ranking.png'),
@@ -570,73 +594,83 @@ def figure3_final_ranking(model_results):
 # FIGURE 4: Lessons Learned
 # ============================================================================
 def figure4_lessons_learned():
-    """Create a visually appealing figure with key takeaways."""
+    """Create a visually appealing figure with 7 key takeaways."""
     print("\nGenerating Figure 4: Lessons Learned...")
 
-    fig, ax = plt.subplots(figsize=(16, 14))
+    fig, ax = plt.subplots(figsize=(16, 15))
     ax.axis('off')
     ax.set_xlim(0, 10)
-    ax.set_ylim(0, 13)
+    ax.set_ylim(0, 14)
 
     # Title
-    ax.text(5, 12.5, 'Lecons apprises', fontsize=20, fontweight='bold',
+    ax.text(5, 13.5, 'Lecons apprises', fontsize=20, fontweight='bold',
             ha='center', va='center', color='#1565C0')
-    ax.text(5, 12.0, 'Brent Oil Price Forecasting - Enseignements du projet',
+    ax.text(5, 13.0, 'Brent Oil Price Forecasting - Enseignements du projet',
             fontsize=12, ha='center', va='center', color='#666')
 
     lessons = [
         {
             'icon': '\u2757',  # exclamation mark
-            'text': 'Les modeles ML ne sont pas toujours\nsuperieurs aux modeles statistiques',
+            'text': 'Respecter les hypotheses de chaque modele.\n'
+                    'Un modele utilise hors de ses conditions de validite\n'
+                    'donne toujours des resultats absurdes.',
             'color': '#D32F2F',
             'bg': '#FFEBEE'
         },
         {
+            'icon': '\u274C',  # cross mark
+            'text': 'AR/MA/ARMA (d=0) sont invalides pour la prevision\n'
+                    'multi-step sur series non-stationnaires. Ils servent\n'
+                    'uniquement a l\'identification des ordres.',
+            'color': '#BF360C',
+            'bg': '#FBE9E7'
+        },
+        {
             'icon': '\u26A0\uFE0F',  # warning
-            'text': 'lag_1 dans les features = biais de persistance\n(le modele copie t-1)',
+            'text': 'lag_1 dans les features = biais de persistance.\n'
+                    'Le modele copie t-1 au lieu de prevoir.',
             'color': '#F57C00',
             'bg': '#FFF3E0'
         },
         {
             'icon': '\u2696\uFE0F',  # balance
-            'text': 'One-step-ahead \u2260 Multi-step:\ncomparaison equitable obligatoire',
+            'text': 'One-step-ahead \u2260 Multi-step : la comparaison\n'
+                    'doit etre equitable (meme horizon, memes conditions).',
             'color': '#7B1FA2',
             'bg': '#F3E5F5'
         },
         {
             'icon': '\U0001F4CA',  # chart
-            'text': 'Sur series financieres univariees avec peu\nde features, ARIMA > ML',
+            'text': 'Sur series financieres univariees avec peu de features,\n'
+                    'ARIMA > ML en multi-step.',
             'color': '#1565C0',
             'bg': '#E3F2FD'
         },
         {
-            'icon': '\u2699\uFE0F',  # gear
-            'text': 'La regularisation reduit l\'overfitting\nmais amplifie l\'erreur recursive',
-            'color': '#00695C',
-            'bg': '#E0F2F1'
-        },
-        {
-            'icon': '\u274C',  # cross mark
-            'text': 'Les arbres ne peuvent pas extrapoler\nau-dela du range d\'entrainement',
-            'color': '#BF360C',
-            'bg': '#FBE9E7'
-        },
-        {
             'icon': '\U0001F3AF',  # target
-            'text': 'Sur des horizons longs, les modeles simples (Moving Average)\nbattent souvent les modeles complexes (M-competitions, Makridakis)',
+            'text': 'Sur des horizons longs (>12 mois), les modeles simples\n'
+                    '(Moving Average) battent souvent les complexes\n'
+                    '(M-competitions, Makridakis 1982-2020).',
             'color': '#2E7D32',
             'bg': '#E8F5E9'
         },
+        {
+            'icon': '\u2699\uFE0F',  # gear
+            'text': 'Les arbres de decision ne peuvent pas extrapoler.\n'
+                    'L\'erreur recursive s\'accumule exponentiellement.',
+            'color': '#00695C',
+            'bg': '#E0F2F1'
+        },
     ]
 
-    y_start = 10.8
-    y_step = 1.5
+    y_start = 11.8
+    y_step = 1.6
 
     for i, lesson in enumerate(lessons):
         y = y_start - i * y_step
 
         # Background box
-        box = FancyBboxPatch((0.5, y - 0.6), 9.0, 1.3,
+        box = FancyBboxPatch((0.5, y - 0.7), 9.0, 1.4,
                               boxstyle="round,pad=0.15",
                               facecolor=lesson['bg'],
                               edgecolor=lesson['color'],
@@ -644,18 +678,18 @@ def figure4_lessons_learned():
         ax.add_patch(box)
 
         # Number circle
-        circle = plt.Circle((1.3, y + 0.05), 0.35, color=lesson['color'],
+        circle = plt.Circle((1.3, y + 0.0), 0.35, color=lesson['color'],
                             zorder=5)
         ax.add_patch(circle)
-        ax.text(1.3, y + 0.05, str(i + 1), fontsize=14, fontweight='bold',
+        ax.text(1.3, y + 0.0, str(i + 1), fontsize=14, fontweight='bold',
                 ha='center', va='center', color='white', zorder=6)
 
         # Icon
-        ax.text(2.2, y + 0.05, lesson['icon'], fontsize=18,
+        ax.text(2.2, y + 0.0, lesson['icon'], fontsize=18,
                 ha='center', va='center')
 
         # Text
-        ax.text(3.0, y + 0.05, lesson['text'], fontsize=12,
+        ax.text(3.0, y + 0.0, lesson['text'], fontsize=11,
                 ha='left', va='center', color='#333')
 
     plt.tight_layout()
@@ -1013,6 +1047,143 @@ def figure7_ma_vs_arima_explained(train_monthly, test_monthly):
 
 
 # ============================================================================
+# FIGURE 8: Final Summary Table
+# ============================================================================
+def figure8_final_summary_table(model_results):
+    """
+    Create a professional summary table with THREE sections:
+    1. CLASSEMENT FINAL (valid models)
+    2. MODELES EXCLUS (violated assumptions)
+    3. CONCLUSION
+    """
+    print("\nGenerating Figure 8: Final Summary Table...")
+
+    fig, ax = plt.subplots(figsize=(16, 14))
+    ax.axis('off')
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 14)
+
+    # ---- SECTION 1: CLASSEMENT FINAL ----
+    # Section 1 header
+    header_box = FancyBboxPatch((0.3, 11.5), 9.4, 0.7, boxstyle="round,pad=0.1",
+                                 facecolor='#2E7D32', edgecolor='#1B5E20', linewidth=2)
+    ax.add_patch(header_box)
+    ax.text(5, 11.85, 'CLASSEMENT FINAL (modeles valides)',
+            fontsize=14, fontweight='bold', ha='center', va='center', color='white')
+
+    # Valid models ranking
+    valid_ranking = [
+        ('1', 'Moving Average (12)', '16.70', 'Baseline robuste (M-competitions)'),
+        ('2', 'ARIMA(2,1,2)', '20.43', 'Meilleur modele statistique'),
+        ('3', 'AutoARIMA(2,1,0)', '20.49', 'Selection automatique'),
+        ('4', 'Naive Last Value', '~20.7', 'Baseline'),
+        ('5', 'SARIMA(1,1,1)(1,1,0,12)', '28.13', 'Diverge sur horizon long'),
+        ('6', 'Random Forest (Recursive)', '~51', 'Erreur recursive accumulee'),
+        ('7', 'XGBoost (Recursive)', '~75', 'Erreur recursive accumulee'),
+    ]
+
+    # Table header row
+    y_table_start = 11.2
+    col_x = [0.6, 1.2, 4.5, 6.0, 7.5]  # Rang, Modele, MAE, Statut
+    row_height = 0.45
+
+    # Column headers
+    header_y = y_table_start
+    header_bg = FancyBboxPatch((0.4, header_y - 0.2), 9.2, 0.4,
+                                boxstyle="round,pad=0.05",
+                                facecolor='#C8E6C9', edgecolor='#4CAF50', linewidth=1)
+    ax.add_patch(header_bg)
+    ax.text(col_x[0], header_y, 'Rang', fontsize=9, fontweight='bold',
+            ha='center', va='center', color='#1B5E20')
+    ax.text(col_x[1] + 1.2, header_y, 'Modele', fontsize=9, fontweight='bold',
+            ha='center', va='center', color='#1B5E20')
+    ax.text(col_x[3], header_y, 'MAE', fontsize=9, fontweight='bold',
+            ha='center', va='center', color='#1B5E20')
+    ax.text(col_x[4] + 1.0, header_y, 'Statut', fontsize=9, fontweight='bold',
+            ha='center', va='center', color='#1B5E20')
+
+    for i, (rang, modele, mae, statut) in enumerate(valid_ranking):
+        y = y_table_start - (i + 1) * row_height
+        # Alternating row background
+        bg_color = '#F1F8E9' if i % 2 == 0 else '#FFFFFF'
+        row_bg = FancyBboxPatch((0.4, y - 0.18), 9.2, 0.36,
+                                 boxstyle="round,pad=0.02",
+                                 facecolor=bg_color, edgecolor='#E0E0E0', linewidth=0.5)
+        ax.add_patch(row_bg)
+        ax.text(col_x[0], y, rang, fontsize=9, ha='center', va='center',
+                fontweight='bold', color='#333')
+        ax.text(col_x[1] + 1.2, y, modele, fontsize=9, ha='center', va='center', color='#333')
+        ax.text(col_x[3], y, mae, fontsize=9, ha='center', va='center',
+                fontweight='bold', color='#2E7D32')
+        ax.text(col_x[4] + 1.0, y, statut, fontsize=8, ha='center', va='center', color='#555')
+
+    # ---- SECTION 2: MODELES EXCLUS ----
+    section2_y = 7.5
+    header_box2 = FancyBboxPatch((0.3, section2_y), 9.4, 0.7, boxstyle="round,pad=0.1",
+                                  facecolor='#D32F2F', edgecolor='#B71C1C', linewidth=2)
+    ax.add_patch(header_box2)
+    ax.text(5, section2_y + 0.35, 'MODELES EXCLUS (hypotheses violees)',
+            fontsize=14, fontweight='bold', ha='center', va='center', color='white')
+
+    excluded_models = [
+        ('AR(2)', 'd=0 sur serie non-stationnaire'),
+        ('MA(2)', 'd=0 + memoire de 2 lags seulement\n(revient a une constante apres 2 steps)'),
+        ('ARMA(2,2)', 'd=0 : revert vers la moyenne (artefact)'),
+    ]
+
+    # Excluded table header
+    excl_header_y = section2_y - 0.45
+    excl_header_bg = FancyBboxPatch((0.4, excl_header_y - 0.2), 9.2, 0.4,
+                                     boxstyle="round,pad=0.05",
+                                     facecolor='#FFCDD2', edgecolor='#EF9A9A', linewidth=1)
+    ax.add_patch(excl_header_bg)
+    ax.text(2.5, excl_header_y, 'Modele', fontsize=9, fontweight='bold',
+            ha='center', va='center', color='#B71C1C')
+    ax.text(7.0, excl_header_y, 'Raison d\'exclusion', fontsize=9, fontweight='bold',
+            ha='center', va='center', color='#B71C1C')
+
+    for i, (modele, raison) in enumerate(excluded_models):
+        y = excl_header_y - (i + 1) * 0.55
+        bg_color = '#FFF5F5' if i % 2 == 0 else '#FFFFFF'
+        row_bg = FancyBboxPatch((0.4, y - 0.22), 9.2, 0.44,
+                                 boxstyle="round,pad=0.02",
+                                 facecolor=bg_color, edgecolor='#FFCDD2', linewidth=0.5)
+        ax.add_patch(row_bg)
+        ax.text(2.5, y, modele, fontsize=10, ha='center', va='center',
+                fontweight='bold', color='#D32F2F')
+        ax.text(7.0, y, raison, fontsize=9, ha='center', va='center', color='#555')
+
+    # ---- SECTION 3: CONCLUSION ----
+    section3_y = 4.5
+    conclusion_box = FancyBboxPatch((0.3, section3_y - 2.8), 9.4, 3.2,
+                                     boxstyle="round,pad=0.2",
+                                     facecolor='#E3F2FD', edgecolor='#1565C0', linewidth=2)
+    ax.add_patch(conclusion_box)
+
+    ax.text(5, section3_y, 'CONCLUSION', fontsize=14, fontweight='bold',
+            ha='center', va='center', color='#0D47A1')
+
+    conclusion_text = (
+        'La correction principale est simple : respecter les hypotheses\n'
+        'de chaque modele. Un modele utilise hors de ses conditions de validite\n'
+        'donne toujours des resultats absurdes, quelle que soit sa sophistication.'
+    )
+    ax.text(5, section3_y - 1.2, conclusion_text, fontsize=11, ha='center',
+            va='center', color='#333', linespacing=1.6, style='italic')
+
+    # Final note
+    ax.text(5, section3_y - 2.3,
+            'Projet : Analyse et Prevision des Prix du Petrole Brent',
+            fontsize=9, ha='center', va='center', color='#757575')
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(SAVE_DIR, 'final_summary_table.png'),
+                dpi=150, bbox_inches='tight')
+    plt.close()
+    print("  Saved: final_summary_table.png")
+
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 def main():
@@ -1036,7 +1207,7 @@ def main():
     for name, mae in sorted(model_results.items(), key=lambda x: x[1]):
         print(f"    {name:35s}: MAE = {mae:.2f}")
 
-    # Generate all 7 figures
+    # Generate all 8 figures
     print("\n" + "-" * 70)
     figure1_v1_vs_v2_comparison()
     figure2_what_went_wrong()
@@ -1045,6 +1216,7 @@ def main():
     figure5_evolution_timeline()
     figure6_arma_anomaly_explained(train_monthly, test_monthly)
     figure7_ma_vs_arima_explained(train_monthly, test_monthly)
+    figure8_final_summary_table(model_results)
 
     print("\n" + "=" * 70)
     print(" STEP 13 COMPLETE - All figures saved to:")
@@ -1058,6 +1230,7 @@ def main():
     print("  5. evolution_timeline.png")
     print("  6. arma_anomaly_explained.png")
     print("  7. ma_vs_arima_explained.png")
+    print("  8. final_summary_table.png")
 
 
 if __name__ == '__main__':

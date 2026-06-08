@@ -254,6 +254,25 @@ python src/analysis_v2.py
 
 ## Resultats et Evolution du Projet
 
+### Classement final (modeles valides uniquement)
+
+| Rang | Modele | MAE (USD) | Statut |
+|------|--------|-----------|--------|
+| 1 | Moving Average (12) | 16.70 | Baseline robuste (M-competitions) |
+| 2 | ARIMA(2,1,2) | 20.43 | Meilleur modele statistique valide |
+| 3 | AutoARIMA(2,1,0) | 20.49 | Selection automatique |
+| 4 | Naive Last Value | 20.69 | Baseline |
+| 5 | SARIMA(1,1,1)(1,1,0,12) | 28.13 | Diverge sur horizon long |
+| 6 | Random Forest (Recursive) | 51.16 | Erreur recursive accumulee |
+| 7 | XGBoost (Recursive) | 75.87 | Erreur recursive accumulee |
+
+**Modeles exclus du classement** (hypotheses violees) :
+- AR(2), MA(2), ARMA(2,2) : d=0 sur serie non-stationnaire - resultats invalides pour la prevision
+
+### Principe fondamental
+
+> *La correction principale est simple : respecter les hypotheses de chaque modele. Un modele utilise hors de ses conditions de validite donne toujours des resultats absurdes, quelle que soit sa sophistication.*
+
 ### V1 -- Resultats initiaux (biaises)
 
 Les premiers resultats semblaient montrer une superiorite des modeles ML :
